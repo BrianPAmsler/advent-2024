@@ -1,7 +1,24 @@
-use std::{fmt::{Debug, Formatter}, str::Chars};
+use std::{fmt::{Debug, Formatter}, marker::PhantomData, str::Chars};
 
-#[derive(Debug)]
-enum State {
+pub trait State: Debug + Sized + Clone {
+    fn is_valid(&self, current_character: Option<char>) -> bool;
+    /// Advances the state. Returns true if the parser shoud move to the next character.
+    fn next_state(&mut self, current_character: Option<char>) -> bool;
+
+    fn is_same(a: &Self, b: &Self) -> bool {
+        std::mem::discriminant(a) == std::mem::discriminant(b)
+    }
+
+    fn initial_state() -> Self;
+}
+
+pub trait StateProcessor<S: State, T>: Default {
+    fn process_state(&mut self, state: &S, current_character: Option<char>);
+    fn finish(self) -> T;
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum Part1State {
     Begin,
     Mul(usize),
     LParen,
@@ -13,75 +30,74 @@ enum State {
 }
 
 static MULTIPLY: &'static str = "mul";
-impl State {
+impl State for Part1State {
     fn is_valid(&self, character: Option<char>) -> bool {
         match self {
-            State::Begin => false,
-            State::Mul(i) => {
+            Part1State::Begin => false,
+            Part1State::Mul(i) => {
                 character == MULTIPLY.chars().nth(*i)
             },
-            State::LParen => character == Some('('),
-            State::Num1(_) => character.is_some() && character.unwrap().is_numeric(),
-            State::Comma => character == Some(','),
-            State::Num2(_) => character.is_some() && character.unwrap().is_numeric(),
-            State::RParen => character == Some(')'),
-            State::End => false
+            Part1State::LParen => character == Some('('),
+            Part1State::Num1(_) => character.is_some() && character.unwrap().is_numeric(),
+            Part1State::Comma => character == Some(','),
+            Part1State::Num2(_) => character.is_some() && character.unwrap().is_numeric(),
+            Part1State::RParen => character == Some(')'),
+            Part1State::End => false
         }
     }
 
-    /// Advances the state. Returns true if the parser shoud move to the next character.
-    pub fn next_state(&mut self, current_character: Option<char>) -> bool {
+    fn next_state(&mut self, current_character: Option<char>) -> bool {
         let valid = self.is_valid(current_character);
         let (next_state, advance) = match (&self, valid) {
-            (State::Begin, _) => (State::Mul(0), false),
-            (State::Mul(i), true) => {
+            (Part1State::Begin, _) => (Part1State::Mul(0), false),
+            (Part1State::Mul(i), true) => {
                 if *i >= MULTIPLY.len() - 1 {
-                    (State::LParen, true)
+                    (Part1State::LParen, true)
                 } else {
-                    (State::Mul(*i + 1), true)
+                    (Part1State::Mul(*i + 1), true)
                 }
             },
-            (State::Mul(i), false) => {
+            (Part1State::Mul(i), false) => {
                 if *i == 0 {
-                    (State::Begin, true)
+                    (Part1State::Begin, true)
                 } else {
-                    (State::Begin, false)
+                    (Part1State::Begin, false)
                 }
             },
-            (State::LParen, true) => (State::Num1(0), true),
-            (State::LParen, false) => (State::Begin, false),
-            (State::Num1(i), true) => {
+            (Part1State::LParen, true) => (Part1State::Num1(0), true),
+            (Part1State::LParen, false) => (Part1State::Begin, false),
+            (Part1State::Num1(i), true) => {
                 if *i >= 2 {
-                    (State::Comma, true)
+                    (Part1State::Comma, true)
                 } else {
-                    (State::Num1(*i + 1), true)
+                    (Part1State::Num1(*i + 1), true)
                 }
             },
-            (State::Num1(i), false) => {
+            (Part1State::Num1(i), false) => {
                 if *i > 0 {
-                    (State::Comma, false)
+                    (Part1State::Comma, false)
                 } else {
-                    (State::Begin, false)
+                    (Part1State::Begin, false)
                 }
             }
-            (State::Comma, true) => (State::Num2(0), true),
-            (State::Num2(i), true) =>  {
+            (Part1State::Comma, true) => (Part1State::Num2(0), true),
+            (Part1State::Num2(i), true) =>  {
                 if *i >= 2 {
-                    (State::RParen, true)
+                    (Part1State::RParen, true)
                 } else {
-                    (State::Num2(*i + 1), true)
+                    (Part1State::Num2(*i + 1), true)
                 }
             },
-            (State::Num2(i), false) => {
+            (Part1State::Num2(i), false) => {
                 if *i > 0 {
-                    (State::RParen, false)
+                    (Part1State::RParen, false)
                 } else {
-                    (State::Begin, false)
+                    (Part1State::Begin, false)
                 }
             }
-            (State::RParen, true) => (State::End, false),
-            (State::End, _) => (State::Begin, true),
-            (_, false) => (State::Begin, false)
+            (Part1State::RParen, true) => (Part1State::End, false),
+            (Part1State::End, _) => (Part1State::Begin, true),
+            (_, false) => (Part1State::Begin, false)
         };
 
         *self = next_state;
@@ -89,29 +105,31 @@ impl State {
         advance
     }
 
-    pub fn is_same(a: &State, b: &State) -> bool {
-        std::mem::discriminant(a) == std::mem::discriminant(b)
+    fn initial_state() -> Self {
+        Self::Begin
     }
 }
 
-pub struct Parser<'a> {
+pub struct Parser<'a, P: StateProcessor<S, T>, T, S: State,> {
     iter: Chars<'a>,
     current_char: Option<char>,
-    state: State,
-    last_state: State
+    state: S,
+    last_state: S,
+    processor: P,
+    _pd: PhantomData<T>
 }
 
-impl<'a> Debug for Parser<'a> {
+impl<'a, T, S: State, P: StateProcessor<S,T>> Debug for Parser<'a, P, T, S> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Parser").field("current_char", &self.current_char).field("state", &self.state).finish()
     }
 }
 
-impl<'a> Parser<'a> {
-    pub fn new(string: &'a str) -> Parser<'a> {
+impl<'a, T, S: State, P: StateProcessor<S, T>> Parser<'a, P, T, S> {
+    pub fn new(string: &'a str) -> Parser<'a, P, T, S> {
         let mut iter = string.chars();
         let first = iter.next();
-        Parser { iter, current_char: first , state: State::Begin, last_state: State::Begin }
+        Parser { iter, current_char: first , state: S::initial_state(), last_state: S::initial_state(), processor: P::default(), _pd: PhantomData }
     }
 
     fn skip_whitespace(&mut self) {
@@ -123,45 +141,59 @@ impl<'a> Parser<'a> {
     }
 
     fn advance(&mut self) {
+        self.last_state = self.state.clone();
         if self.state.next_state(self.current_char) {
             self.current_char = self.iter.next();
         }
 
-        if !State::is_same(&self.last_state, &self.state) {
+        if !S::is_same(&self.last_state, &self.state) {
             self.skip_whitespace();
         }
 
         // println!("{:?}", self);
     }
 
-    pub fn parse(&mut self) -> Vec<(u32, u32)> {
-        let mut vec = Vec::new();
-
-        let mut num1 = String::new();
-        let mut num2 = String::new();
+    pub fn parse(mut self) -> T {
         while self.current_char.is_some() {
-            match self.state {
-                State::Begin => {
-                    num1.clear();
-                    num2.clear();
-                }
-                State::Num1(_) => if self.state.is_valid(self.current_char) {
-                    num1.push(self.current_char.unwrap());
-                },
-                State::Num2(_) => if self.state.is_valid(self.current_char) {
-                    num2.push(self.current_char.unwrap());
-                },
-                State::End => {
-                    vec.push((num1.parse().unwrap(), num2.parse().unwrap()));
-                }
-                _ => ()
-            }
+            self.processor.process_state(&self.state, self.current_char);
 
             self.advance();
         }
 
         // println!();
 
-        vec
+        self.processor.finish()
+    }
+}
+
+#[derive(Default)]
+pub struct Part1Processor {
+    num1: String,
+    num2: String,
+    vec: Vec<(u64, u64)>
+}
+
+impl StateProcessor<Part1State, Vec<(u64, u64)>> for Part1Processor {
+    fn process_state(&mut self, state: &Part1State, current_character: Option<char>) {
+        match state {
+            Part1State::Begin => {
+                self.num1.clear();
+                self.num2.clear();
+            }
+            Part1State::Num1(_) => if state.is_valid(current_character) {
+                self.num1.push(current_character.unwrap());
+            },
+            Part1State::Num2(_) => if state.is_valid(current_character) {
+                self.num2.push(current_character.unwrap());
+            },
+            Part1State::End => {
+                self.vec.push((self.num1.parse().unwrap(), self.num2.parse().unwrap()));
+            }
+            _ => ()
+        }
+    }
+
+    fn finish(self) -> Vec<(u64, u64)> {
+        self.vec
     }
 }

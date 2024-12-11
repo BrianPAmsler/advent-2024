@@ -3,7 +3,7 @@ mod parser;
 use std::{fs::File, io::{BufReader, Read}};
 
 use anyhow::Result;
-use parser::Parser;
+use parser::{Parser, Part1Processor};
 
 fn get_input() -> Result<String> {
     let file = File::open("input.txt")?;
@@ -19,7 +19,7 @@ fn get_input() -> Result<String> {
 fn part_one() -> Result<()> {
     let input = get_input()?;
 
-    let mut parser = Parser::new(&input);
+    let parser = Parser::<Part1Processor, _, _>::new(&input);
 
     let multiplications = parser.parse();
     let mut sum = 0;
