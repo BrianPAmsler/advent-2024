@@ -15,19 +15,15 @@ fn get_input() -> Result<String> {
     Ok(buf)
 }
 
+// expected answer: 188192787
 fn part_one() -> Result<()> {
     let input = get_input()?;
 
     let mut parser = Parser::new(&input);
 
+    let multiplications = parser.parse();
     let mut sum = 0;
-    while parser.has_next() {
-        match parser.parse_next() {
-            Some((a, b)) => sum += a * b,
-            None => ()
-        }
-        // println!("parser state: {:?}", &parser);
-    }
+    multiplications.into_iter().for_each(|(a, b)| sum += a * b);
 
     // println!("state: {:?}", parser);
 
