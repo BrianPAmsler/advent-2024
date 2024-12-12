@@ -1,1 +1,1 @@
-mul(1, 6)gmsbtkimdkmul(mul(1,4)
+mul(1, 6)gmsbtdon't()kimdkmul(mul(1,4)do()mul(5, 6)

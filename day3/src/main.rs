@@ -3,7 +3,7 @@ mod parser;
 use std::{fs::File, io::{BufReader, Read}};
 
 use anyhow::Result;
-use parser::{Parser, Part1Processor};
+use parser::{Parser, Part1Processor, Part2Processor};
 
 fn get_input() -> Result<String> {
     let file = File::open("input.txt")?;
@@ -27,13 +27,25 @@ fn part_one() -> Result<()> {
 
     // println!("state: {:?}", parser);
 
-    println!("total: {:?}", sum);
+    println!("part 1 total: {:?}", sum);
 
     Ok(())   
 }
 
 fn part_two() -> Result<()> {
-    Ok(())
+    let input = get_input()?;
+
+    let parser = Parser::<Part2Processor, _, _>::new(&input);
+
+    let multiplications = parser.parse();
+    let mut sum = 0;
+    multiplications.into_iter().for_each(|(a, b)| sum += a * b);
+
+    // println!("state: {:?}", parser);
+
+    println!("part 2 total: {:?}", sum);
+
+    Ok(())   
 }
 
 fn main() {
